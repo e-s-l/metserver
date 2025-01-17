@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 
-import sys
-import socket
-import threading
-from threading import Timer, Lock
-import serial
+import sys                              # to cleanly kill
+import socket                           # for tcp connects
+import threading                        #
+from threading import Timer, Lock       #
+import serial                           #
 
-from config import *
+from config import *                    # program parameters
 
 ###########
 # objects #
@@ -44,7 +44,7 @@ class RepeatedTimer(object):
 # functions #
 #############
 
-def setup_socket(host: str, port: int):
+def setup_socket(h: str, p: int):
 
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -52,9 +52,9 @@ def setup_socket(host: str, port: int):
 
         # Bind socket to local host and port
         try:
-            s.bind((host, port))
+            s.bind((h, p))
         except:
-            raise Exception(f'Bind failed. Error Code : {socket.error[0]} Message {socket.error[1]}')
+            raise Exception(f'Bind failed. Error Code: {socket.error[0]} Message {socket.error[1]}')
 
         print('Socket bind complete')
 
@@ -65,9 +65,10 @@ def setup_socket(host: str, port: int):
         return s
 
     except Exception as e:
-        print(f'Exception in setting up the socket!\n{e}')
-        sys.exit()
+        raise Exception(f'Exception in setting up the socket!\n{e}')
 
+
+# second/actual version
 def getmet_with_tcp():
 
     def poll_tcp():
@@ -92,7 +93,7 @@ def getmet_with_tcp():
     def poll_serial():
 
         try:
-            with serial.Serial('/dev/ttyUSB0', 9600, bytesize=8, parity='N', timeout=2) as ser:
+            with serial.Serial(com_port, baud_rate, bytesize, parity, serial_timeout) as ser:
                 ser.write(b'*0100TT\r\n')
                 tempmsg = ser.read(256).decode('utf-8').strip()
 
@@ -106,7 +107,7 @@ def getmet_with_tcp():
 
         except Exception as e:
             print(f"Error in poll_serial: {e}")
-            return "-1,-1,-1,-1,-1"
+            return "-1,-1,-1,-1,-1"     # dummy error value
 
     if s2e_mode:
         # try the s2e socket...
@@ -119,6 +120,8 @@ def getmet_with_tcp():
 
     return readmsg
 
+
+# first version
 def getmet():
     # open serial port & send message
     try:
@@ -138,23 +141,25 @@ def getmet():
 
     except Exception as e:
         print(f'Error in getmet: {e}')
-        return "-1,-1,-1,-1,-1"
+        return "-1,-1,-1,-1,-1"     # dummy error value
 
-def client_handler(conn, readmsg_lock, readmsg):
+
+def client_handler(conn, readmsg_lock, readmsg: str):
     try:
         with readmsg_lock:
             conn.sendall(readmsg.encode('utf-8'))
 
     except Exception as e:
-        print(f'Error in client_handler: {e}')
+        raise Exception(f'Error in client_handler: {e}') from e
     finally:
         conn.close()
+
 
 def main():
 
     #########
     # Notes
-    # need two threads one to read wx, one to give to client
+    # need (at least) two threads: one to read wx, one to give to client
     #
     #########
 
@@ -165,20 +170,26 @@ def main():
     #################
 
     # host & port stored in config file
-    sock = setup_socket(host, port)
+    try:
+        sock = setup_socket(host, port)
+    except Exception as e:
+        raise Exception(f"Error  creating socket: {e}") from e
 
     ###################
     # set up readings #
     ###################
 
-    readmsg = "0,0,0,0,0"
+    readmsg = "0,0,0,0,0"       # dummy initialisation value
     readmsg_lock = Lock()
 
     def update_readmsg():
         nonlocal readmsg
-        new_msg = getmet()
-        with readmsg_lock:
-            readmsg = new_msg
+        try:
+            new_msg = getmet()
+            with readmsg_lock:
+                readmsg = new_msg
+        except Exception as e:
+            raise Exception(f"Error reading sensor {e}")
 
     rt = RepeatedTimer(20, update_readmsg)
 
@@ -198,17 +209,26 @@ def main():
 
     except KeyboardInterrupt:
         print("\nShutting down server...")
+        return 0
     except Exception as e:
-        print(f'Exception in main: {e}')
+        raise Exception(f'Exception in main: {e}') from e
     finally:
-        rt.stop()
-        sock.close()
-        print("Server shut down.")
+        try:
+            rt.stop()
+            sock.close()
+            print("Server shut down.")
+            return 0
+        except Exception as e:
+            raise Exception(f'Exception while shutting down: {e}')
 
 ############################
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except Exception as exc:
+        print(f"Error: {exc}")
+        sys.exit(1)
 
 ########
 # TODO
@@ -216,5 +236,6 @@ if __name__ == "__main__":
 # consider adding database uploader
 # test!!!
 # docstrings
-#
+# create requirements.txt for virtual environment, just in case...
+# i guess then create wrapper script to be run as system service
 ########

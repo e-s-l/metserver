@@ -56,7 +56,7 @@ class RepeatedTimer(object):
 
 def setup_socket(h: str, p: int):
     """
-    Set-up a TCP socket, bind it & prepare it to listen for incoming connections.
+    Set up a TCP socket, bind it & prepare it to listen for incoming connections.
 
     :param h: host address (ipv4)
     :param p: port
@@ -82,7 +82,8 @@ def setup_socket(h: str, p: int):
         return s
 
     except Exception as e:
-        raise Exception(f'Exception in setting up the socket!\n{e}') from e
+        raise Exception(f'Exception in setting up the socket.') from e
+
 
 def poll_tcp():
     """
@@ -90,9 +91,9 @@ def poll_tcp():
 
     This is just a place-holder until we set up the device.
 
-    :return: string containing wx data, or `None` if
-             there is an error.
+    :return: string containing wx data, or rm_err if there is an error.
     """
+
     try:
         with socket.create_connection((s2e_h, s2e_p), timeout=5) as s2e_sock:
             s2e_sock.sendall(b'*0100TT\r\n')
@@ -108,7 +109,7 @@ def poll_tcp():
 
     except Exception as e:
         logger.error(f"Error in poll_tcp: {e}")
-        return None
+        return rm_err
 
 
 def poll_serial():
@@ -117,6 +118,7 @@ def poll_serial():
 
     :return:  string containing wx data or a dummy set of -1s if there's an error
     """
+
     if debug: logger.debug("in poll_serial")
 
     try:
@@ -168,12 +170,14 @@ def poll_serial():
         logger.error(f"Unexpected error in poll_serial: {e}")
         return rm_err
 
+
 def getmet():
     """
     Runner function to get the wx data.
 
     :return: The string of wx data.
     """
+
     if debug: logger.debug("in getmet")
 
     readmsg = "0,0,0,0,0"  # dummy initialisation value
@@ -182,7 +186,7 @@ def getmet():
         # try the s2e socket...
         readmsg = poll_tcp()
         # then if no result give the com port a go...
-        if readmsg is None and serial_mode:
+        if readmsg == rm_err and serial_mode:
             readmsg = poll_serial()
     elif serial_mode:
         readmsg = poll_serial()
@@ -201,6 +205,7 @@ def client_handler(conn, readmsg_lock, readmsg: str):
     :param readmsg: The wx data string.
     :return: None
     """
+
     if debug: logger.debug(f"in client handler")
 
     try:
@@ -225,9 +230,9 @@ def check_config():
 
     :return: None
     """
+
     # check one of the input modes is true
-    if not (s2e_mode or serial_mode):
-        raise Exception("no wx input configured")
+    if not (s2e_mode or serial_mode): raise Exception("no wx input configured")
 
     # check hosts are valid ipv4s
     try:
@@ -236,92 +241,133 @@ def check_config():
         raise Exception(f'invalid s2e host address: {s2e_h}') from ve
 
 
-def main():
+def setup_server():
     """
-    Given a valid configuration, create a server, start a timer regularly reading the ex data
-    give this value to any new connections & close the connection, & repeat.
+    Given a valid configuration, create a server, start a timer regularly reading the wx data, and start the main loop.
 
     :return: None
     """
-    ####
-    # check config settings are ok
-    check_config()
 
-    #################
-    # create socket #
-    #################
+    sock = None
+    rt = None
 
-    # host & port stored in config file
     try:
-        sock = setup_socket(host, port)
-    except Exception as e:
-        raise Exception(f"Error creating socket: {e}") from e
 
-    ###################
-    # set up readings #
-    ###################
+        # check config settings are ok
+        check_config()
 
-    readmsg = getmet()
-    readmsg_lock = Lock()
+        #################
+        # create socket #
+        #################
 
-    def update_readmsg():
-        """
-        Update the globally held value of the wx data string.
-        To be regularly re-run by the timer.
-
-        :return: None
-        """
-        nonlocal readmsg
+        # host & port stored in config file
         try:
-            new_msg = getmet()
-            with readmsg_lock:
-                readmsg = new_msg
-        except Exception as ex:
-            raise Exception(f"Error reading sensor: {ex}") from ex
+            sock = setup_socket(host, port)
+        except Exception as e:
+            raise Exception(f"Error creating socket: {e}") from e
 
-    rt = RepeatedTimer(20, update_readmsg)
+        ###################
+        # set up readings #
+        ###################
 
-    #######################
-    # enter the main loop #
-    #######################
-    try:
+        readmsg = getmet()
+        readmsg_lock = Lock()
+
+        #####################
+
+        def update_readmsg():
+            """
+            Update the globally held value of the wx data string.
+            To be regularly re-run by the timer.
+
+            :return: None
+            """
+
+            nonlocal readmsg
+            try:
+                new_msg = getmet()
+                with readmsg_lock:
+                    readmsg = new_msg
+            except Exception as ex:
+                raise Exception(f"Error reading sensor: {ex}") from ex
+
+        #####################
+
+        rt = RepeatedTimer(20, update_readmsg)
+
         with ThreadPoolExecutor(max_workers=10) as executor:
-            # in which we accept connections (from FS/the client) & return an immediate reading
-            while True:
-                try:
-                    # wait to accept a connection - blocking call
-                    conn, addr = sock.accept()
-                    logger.info(f'Connected with {addr[0]} : {addr[1]}')
 
-                    # new thread to handle each client
-                    executor.submit(client_handler, conn, readmsg_lock, readmsg)
+            #######################
+            # enter the main loop #
+            #######################
 
-                    #
-                    if throttle: time.sleep(0.01)
+            main_loop(sock, executor, rt, readmsg, readmsg_lock)
 
-                except OSError as os_err:
-                    raise Exception(f"Socket error: {os_err}") from os_err
-                except Exception as e:
-                    raise Exception(f"Error in main loop: {e}") from e
+    except  Exception as e:
+        raise Exception(f"Exception setting up the server") from e
+    finally:
+        server_shutdown(sock, rt)
+
+
+def main_loop(s, executor, repeat_timer, msg, lock):
+    """
+    the main loop run in the server which gives
+    the wx value (read_msg) to any new connections & closes the connection.
+
+    :param s: the socket to listen to.
+    :param executor: the thread pool execution agent.
+    :param repeat_timer: the timer handling the updates of the wx reads.
+    :param msg: the current wx data.
+    :param lock: a lock.
+    :return:  None
+    """
+
+    try:
+        # in which we accept connections (from FS/the client) & return an immediate reading
+        while True:
+            try:
+                # wait to accept a connection - blocking call
+                conn, addr = s.accept()
+                logger.info(f'Connected with {addr[0]} : {addr[1]}')
+
+                # new thread to handle each client
+                executor.submit(client_handler, conn, lock, msg)
+
+                #
+                if throttle: time.sleep(0.01)
+
+            except OSError as os_err:
+                raise Exception(f"Socket error: {os_err}") from os_err
+            except Exception as e:
+                raise Exception(f"Error in main loop: {e}") from e
 
     except KeyboardInterrupt:
         logger.info("Shutting down server...")
-    except Exception as e:
-        raise Exception(f'Exception in main: {e}') from e
     finally:
-        try:
-            rt.stop()
-            sock.close()
-            logger.info("Server shut down.")
-        except Exception as e:
-            raise Exception(f'Exception while shutting down: {e}') from e
+        server_shutdown(s, repeat_timer)
 
+
+def server_shutdown(s, rt):
+    """
+    Helper function to cleanly kill the server program.
+
+    :param s: the socket to close.
+    :param rt: the timer to abort.
+    :return:  None
+    """
+
+    try:
+        if rt: rt.stop()
+        if s: s.close()
+        logger.info("Server shut down.")
+    except Exception as e:
+        raise Exception(f'Exception while shutting down server.') from e
 
 ############################
 
 if __name__ == "__main__":
     try:
-        sys.exit(main())
+        sys.exit(setup_server())
     except Exception as exc:
         logger.error(f"{exc}")
         sys.exit(1)
@@ -330,5 +376,4 @@ if __name__ == "__main__":
 # TODO
 # consider adding database uploader
 # test!!!
-# docstrings
 ########

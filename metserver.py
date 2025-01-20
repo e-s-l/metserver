@@ -20,7 +20,9 @@ from config import *                                # program parameters
 ###########
 
 class RepeatedTimer(object):
-    """Class to create an x interval time which runs a function to poll the weather station."""
+    """JMc's class to create an x interval time
+    which runs a function to poll the weather station."""
+
     def __init__(self, interval, function, *args, **kwargs):
         self.lock = Lock()
         self._timer = None

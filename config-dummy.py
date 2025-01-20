@@ -10,7 +10,14 @@ import sys
 ###########
 # Control #
 ###########
-debug = True                # If true, program will print readmsg (wx) values
+# print extra info
+debug = False
+
+# dummy read msg values in cases of error:
+rm_err = "-1,-1,-1,-1,-1"
+
+# add a slight time delay:
+throttle = False
 
 ##########
 # Server #
@@ -42,13 +49,23 @@ serial_timeout=2
 ##########
 # Logger #
 ##########
-logfile = "met_server.log"          # the log output file, should really be /var/log/something or /tmp/something
+
+log2file = False
+log2stdout = True
+
 logger = logging.getLogger(__name__)
-# format of the log messages:
-logfmt = logging.Formatter("%(asctime)s-%(levelname)s: %(message)s", "%Y.%j.%H:%M:%S")
-# set the format & make output go to stdout & the logfile:
-logfile_handler = logging.FileHandler(logfile)
-logfile_handler.setFormatter(logfmt)
-logger.addHandler(logfile_handler)                      # to the file
-logger.addHandler(logging.StreamHandler(sys.stdout))    # to standard out
-logger.setLevel(logging.DEBUG)                          # set default level
+
+if log2file:
+    logfile = "met_server.log"  # the log output file, should really be /var/log/something or /tmp/something
+    logfmt = logging.Formatter("%(asctime)s-%(levelname)s: %(message)s", "%Y.%j.%H:%M:%S")
+    logfile_handler = logging.FileHandler(logfile)
+    logfile_handler.setFormatter(logfmt)
+    logger.addHandler(logfile_handler)
+
+if log2stdout:
+    stdfmt = logging.Formatter("%(levelname)s: %(message)s")
+    stdout_handler = logging.StreamHandler(sys.stdout)
+    stdout_handler.setFormatter(stdfmt)
+    logger.addHandler(stdout_handler)
+
+logger.setLevel(logging.DEBUG)      # set default level

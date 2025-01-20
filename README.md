@@ -8,24 +8,31 @@ Mainly, motivated by updating to py3 but modified to include logger, lots of try
 
 Now also requires an external configuration file (config.py).
 
+All the original code is under the metserver-orginal directory.
 
 ## Project
 
 Files: 
 
-metserver.py, config.py, requirements.txt, README.md...
+metserver.py, config.py, requirements.txt, metserver.service, README.md...
 
 
 ## Set-up
 
 Some preliminaries:
 ```commandline
-sudo apt upgrade
-sudo apt-get install python3-pip 
-sudo apt-get install python3-venv
+$ sudo apt upgrade
+$ sudo apt-get install python3-venv
+```
+Also, just in case:
+```commandline
+$ sudo apt-get install python3-pip 
 ```
 
+
 ### Set-up the virtual environment
+
+Coz' can't bREak SySTem paCkAges...
 
 ```commandline
 $ python3 -m venv venv
@@ -41,8 +48,9 @@ $ sudo systemctl enable metserver.service
 $ sudo systemctl start metserver.service
 ```
 
+Check:
+```sudo systemctl status metserver.service```
+
 And check the logs:
 
 ```sudo journalctl -u metserver.service -f -n```
-
-## Usage

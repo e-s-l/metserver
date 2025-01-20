@@ -20,7 +20,7 @@ from config import *                                # program parameters
 ###########
 
 class RepeatedTimer(object):
-    """JMc's class to create an x interval time
+    """JMc's class to create an x interval timer
     which runs a function to poll the weather station."""
 
     def __init__(self, interval, function, *args, **kwargs):
@@ -87,6 +87,8 @@ def setup_socket(h: str, p: int):
 def poll_tcp():
     """
     To get the wx data over tcp via a serial-2-ethernet device.
+
+    This is just a place-holder until we set up the device.
 
     :return: string containing wx data, or `None` if
              there is an error.

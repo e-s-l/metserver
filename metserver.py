@@ -169,6 +169,7 @@ def poll_serial():
 def getmet():
     """
     Runner function to get the wx data.
+
     :return: The string of wx data.
     """
     if debug: logger.debug("in getmet")
@@ -219,6 +220,7 @@ def check_config():
     """
     Quick validity check of the config file.
     Completely unnecessary.
+
     :return: None
     """
     # check one of the input modes is true
@@ -236,6 +238,7 @@ def main():
     """
     Given a valid configuration, create a server, start a timer regularly reading the ex data
     give this value to any new connections & close the connection, & repeat.
+
     :return: None
     """
     ####
@@ -263,6 +266,7 @@ def main():
         """
         Update the globally held value of the wx data string.
         To be regularly re-run by the timer.
+
         :return: None
         """
         nonlocal readmsg

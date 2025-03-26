@@ -218,7 +218,14 @@ def client_handler(conn, readmsg_lock, readmsg: str):
         raise Exception(f'Error in client_handler: {e}') from e
     finally:
         # properly close of the connection (needs this to stop connection ballooning.)
-        conn.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER)
+        # V1
+        #conn.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER)
+        # V2
+        try:
+            conn.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+
         conn.close()
         logger.info("Connection closed.")
 

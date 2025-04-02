@@ -372,7 +372,8 @@ def main_loop(s: socket, executor, repeat_timer: RepeatedTimer, msg: list, lock)
     :return:  None
     """
 
-    msg_str = ''.join(str(x) for x in msg)
+    
+    msg_str = ','.join(str(x) for x in msg)
 
     try:
         # in which we accept connections (from FS/the client) & return an immediate reading

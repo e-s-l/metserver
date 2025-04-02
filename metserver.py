@@ -6,6 +6,18 @@ It samples the weather station (wx) at a low cadence & sends this value when a c
 ESL, 20.1.2025
 """
 
+########
+# TODO
+# consider adding database uploader, may as well set up one on godzilla
+# mariadb with table for a site, just need to timestamp the uploads
+# oh no hang on, this should be a seperate script running on godzilla
+#
+# test
+# change for of read_msg to list, then convert to str when passing out
+# integrate the wind sensor into the last two values of the weather messsage
+# note: will have to update the requirements.txt & things accordingly
+
+
 import ipaddress                                    # to validate the hosts.
 import socket                                       # for tcp connects.
 import time                                         # for the optional throttle.
@@ -15,8 +27,25 @@ import serial                                       # for communicating with the
 
 from config import *                                # program parameters
 
+"""
+Notes:
+
+- The original getmet.c in the field system initialises the values thus:
+    temp=-51.0;
+    pres=-1.0;
+    humi=-1.0;
+    wsp=-1.0;
+    wdir=-1;
+We should do the same.
+
+- From the original, the wind units are:
+    wdir - azimuth wind direction, degrees
+    wsp  - wind speed, m/s
+
+"""
+
 ###########
-# objects #
+# classes #
 ###########
 
 class RepeatedTimer(object):
@@ -54,7 +83,7 @@ class RepeatedTimer(object):
 # functions #
 #############
 
-def setup_socket(h: str, p: int):
+def setup_socket(h: str, p: int) -> socket:
     """
     Set up a TCP socket, bind it & prepare it to listen for incoming connections.
 
@@ -76,7 +105,8 @@ def setup_socket(h: str, p: int):
             raise Exception(f'Bind failed.') from e
 
         # Start listening on socket
-        s.listen(10) # parameter here is number of queued connections (the backlog)
+        s.listen(10)
+        # parameter above is number of queued connections (the backlog)
         logger.info('Socket now listening.')
 
         return s
@@ -85,7 +115,7 @@ def setup_socket(h: str, p: int):
         raise Exception(f'Exception in setting up the socket.') from e
 
 
-def poll_tcp():
+def poll_tcp() -> list:
     """
     To get the wx data over tcp via a serial-2-ethernet device.
 
@@ -105,14 +135,14 @@ def poll_tcp():
             s2e_sock.sendall(b'*0100RH\r\n')
             rhmsg = s2e_sock.recv(256).decode('utf-8').strip()
 
-        return f"{tempmsg[5:].split()[0]},{presmsg[5:].split()[0]},{rhmsg[5:].split()[0]},-1,-1"
+        return [tempmsg[5:].split()[0]},{presmsg[5:].split()[0]},{rhmsg[5:].split()[0]},-1,-1]
 
     except Exception as e:
         logger.error(f"Error in poll_tcp: {e}")
         return rm_err
 
 
-def poll_serial():
+def poll_serial() -> list:
     """
     Get the wx data via the serial port.
 
@@ -152,7 +182,7 @@ def poll_serial():
             presmsg = read_command(b'*0100P3\r\n')
             rhmsg = read_command(b'*0100RH\r\n')
 
-        return f"{tempmsg[5:].split()[0]},{presmsg[5:].split()[0]},{rhmsg[5:].split()[0]},-1,-1"
+        return [tempmsg[5:].split()[0]},{presmsg[5:].split()[0]},{rhmsg[5:].split()[0]},-1,-1]
 
     except ValueError as ve:
         logger.error(f"Value error in poll_serial: {ve}")
@@ -171,16 +201,28 @@ def poll_serial():
         return rm_err
 
 
-def getmet():
+def getmet() -> list:
     """
     Runner function to get the wx data.
 
     :return: The string of wx data.
     """
 
+    #
+    # so....
+    # this guy should 
+    # be called get_wx, and
+    # call poll_met, which in turn calls the below 
+    # but only returns a 3 element list (temp, pressure, humidity)
+    # and the poll_wind to get the last 2 elements (wind speed, wind direction)
+    # and then cat these lists together...
+    #
+
     if debug: logger.debug("in getmet")
 
-    readmsg = "0,0,0,0,0"  # dummy initialisation value
+    readmsg = [-51.0,-1.0,-1.0,-1.0,-1.0]  # dummy initialisation
+    # values chosen to match the FS' getmet.c
+
 
     if s2e_mode:
         # try the s2e socket...
@@ -217,7 +259,7 @@ def client_handler(conn, readmsg_lock, readmsg: str):
     except Exception as e:
         raise Exception(f'Error in client_handler: {e}') from e
     finally:
-        # properly close of the connection (needs this to stop connection ballooning.)
+        # properly close off the connection (needs this to stop connection ballooning.)
         # V1
         #conn.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER)
         # V2
@@ -239,7 +281,8 @@ def check_config():
     """
 
     # check one of the input modes is true
-    if not (s2e_mode or serial_mode): raise Exception("no wx input configured")
+    if not (s2e_mode or serial_mode): 
+        raise Exception("no wx input configured")
 
     # check hosts are valid ipv4s
     try:
@@ -316,7 +359,7 @@ def setup_server():
         server_shutdown(sock, rt)
 
 
-def main_loop(s, executor, repeat_timer, msg, lock):
+def main_loop(s: socket, executor, repeat_timer: RepeatedTimer, msg: list, lock):
     """
     the main loop run in the server which gives
     the wx value (read_msg) to any new connections & closes the connection.
@@ -329,6 +372,8 @@ def main_loop(s, executor, repeat_timer, msg, lock):
     :return:  None
     """
 
+    msg_str = ''.join(str(x) for x in msg)
+
     try:
         # in which we accept connections (from FS/the client) & return an immediate reading
         while True:
@@ -338,7 +383,7 @@ def main_loop(s, executor, repeat_timer, msg, lock):
                 logger.info(f'Connected with {addr[0]} : {addr[1]}')
 
                 # new thread to handle each client
-                executor.submit(client_handler, conn, lock, msg)
+                executor.submit(client_handler, conn, lock, msg_str)
 
                 #
                 if throttle: time.sleep(0.01)
@@ -354,7 +399,7 @@ def main_loop(s, executor, repeat_timer, msg, lock):
         server_shutdown(s, repeat_timer)
 
 
-def server_shutdown(s, rt):
+def server_shutdown(s: socket, rt: RepeatedTimer):
     """
     Helper function to cleanly kill the server program.
 
@@ -378,9 +423,3 @@ if __name__ == "__main__":
     except Exception as exc:
         logger.error(f"{exc}")
         sys.exit(1)
-
-########
-# TODO
-# consider adding database uploader
-# test!!!
-########

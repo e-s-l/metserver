@@ -14,7 +14,9 @@ import sys
 debug = False
 
 # dummy read msg values in cases of error:
-rm_err = "-1,-1,-1,-1,-1"
+rm_err = [-51.0,-1.0,-1.0,-1.0,-1.0]
+# NOTE: these are the same as the initialisation values
+# chosen to match the FS' getmet.c
 
 # add a slight time delay:
 throttle = False

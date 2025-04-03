@@ -302,6 +302,7 @@ def get_wx() -> list:
     try:
         # cat list of 3 w/ list of 2
         wx_data = get_met() + get_wind()
+        logger.info(f"{wx_data}")
     except Exception as e:
         logger.error(f"Error gathering the wx data: {e}")
         wx_data = met_err + wind_err
@@ -322,15 +323,15 @@ def client_handler(conn, readmsg_lock, readmsg: str):
 
     if debug: logger.debug(f"in client handler")
 
-    logger.info(f"msg type: {type(readmsg)}")
-    logger.info(f"readmsg = {readmsg}")
+    #logger.info(f"msg type: {type(readmsg)}")
+    #logger.info(f"readmsg = {readmsg}")
 
     try:
         with readmsg_lock:
             data = readmsg.encode('utf-8')
 
-        logger.info(f"data type: {type(data)}")
-        logger.info(f"readmsg = {data}")
+        #logger.info(f"data type: {type(data)}")
+        #logger.info(f"readmsg = {data}")
         conn.sendall(data)
 
     except Exception as e:

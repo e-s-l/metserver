@@ -3,19 +3,24 @@
 """
 This is a rewrite of JMc's py2 version of the original metserver.c program.
 It samples the weather station (wx) at a low cadence & sends this value when a client connects.
+
 ESL, 20.1.2025
+
+Notes:
+
+- The original getmet.c in the field system initialises the values thus:
+    temp=-51.0;
+    pres=-1.0;
+    humi=-1.0;
+    wsp=-1.0;
+    wdir=-1;
+We do the same.
+
+- From the original, the wind units are:
+    wdir - azimuth wind direction, degrees
+    wsp  - wind speed, m/s
+
 """
-
-########
-# TODO
-# - consider adding database uploader, may as well set up one on godzilla
-# mariadb with table for a site, just need to timestamp the uploads
-# oh no hang on, this should be a seperate script running on godzilla
-#
-# - test
-#
-# note: will have to update the requirements.txt & things accordingly
-
 
 import ipaddress                                    # to validate the hosts.
 import socket                                       # for tcp connects.
@@ -25,23 +30,6 @@ from threading import Timer, Lock                   # for the regular sampling o
 import serial                                       # for communicating with the wx.
 
 from config import *                                # program parameters
-
-"""
-Notes:
-
-- The original getmet.c in the field system initialises the values thus:
-    temp=-51.0;
-    pres=-1.0;
-    humi=-1.0;
-    wsp=-1.0;
-    wdir=-1;
-We should do the same.
-
-- From the original, the wind units are:
-    wdir - azimuth wind direction, degrees
-    wsp  - wind speed, m/s
-
-"""
 
 ###########
 # classes #
@@ -117,7 +105,7 @@ def setup_socket(h: str, p: int) -> socket:
 
 def poll_tcp() -> list:
     """
-    To get the wx data over tcp via a serial-2-ethernet device.
+    To get the met data over tcp via a serial-2-ethernet device.
 
     This is just a place-holder until we set up the device.
 
@@ -144,7 +132,7 @@ def poll_tcp() -> list:
 
 def poll_serial() -> list:
     """
-    Get the wx data via the serial port.
+    Get the met data via the serial port.
 
     :return:  string containing wx data or a dummy set of -1s if there's an error
     """
@@ -155,6 +143,8 @@ def poll_serial() -> list:
         with serial.Serial(com_port, baud_rate, bytesize, parity) as ser:
 
             ser.timeout = serial_timeout
+
+            ###
 
             def read_command(command):
                 """
@@ -177,6 +167,8 @@ def poll_serial() -> list:
 
                 except Exception as ex:
                     raise Exception(f"Error during serial communication: {ex}")
+
+            ###
 
             tempmsg = read_command(b'*0100TT\r\n')
             presmsg = read_command(b'*0100P3\r\n')
@@ -203,9 +195,9 @@ def poll_serial() -> list:
 
 def get_met() -> list:
     """
-    Runner function to get the wx data.
+    Runner function to get the met data (temp, pressure, humidity).
 
-    :return: The list of wx data.
+    :return: The list of met data.
     """
 
     if debug: logger.debug("in get_met")
@@ -226,6 +218,11 @@ def get_met() -> list:
 ##########################
 
 def anemometer_connect() -> socket:
+    """
+    Copied from Jamie's MutlicastCapture.py
+
+    :return: socket for connection
+    """
 
     # Create a UDP socket
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
@@ -248,6 +245,11 @@ def anemometer_connect() -> socket:
     return sock
 
 def anemometer_read(s: socket, offset: int) -> list:
+    """
+    Adapted from Lucas' stream_wind.py
+
+    :return: 2 element list of wind data (speed, direction).
+    """
 
     attempts = 3
     while attempts > 0:
@@ -281,13 +283,23 @@ def get_wind() -> list:
     Connect to the NMEA multicasting anemometer interface,
     and get a value for the wind.
     Format: ([m/s],[direction])
+
+    :return: 2 element list of wind data (speed, direction).
     """
 
     return anemometer_read(anemometer_connect(), misalignment)
+    # should we be closing this off?
+    # maybe, i dunno, not gonna touch it
 
 ##########################
 
 def get_wx() -> list:
+    """
+    A wrapper to the scripts that poll for weather data.
+    Concats the two list's into one.
+
+    :return: the wx data, a 5 element list like (temp, press, humid, speed, direction). Will be converted to a string later down the line.
+    """
 
     try:
         # cat list of 3 (temp, press, humid) w/ list of 2 (w_speed, w_direct)
@@ -323,10 +335,10 @@ def client_handler(conn, readmsg_lock, shared_data: dict):
     except Exception as e:
         raise Exception(f'Error in client_handler: {e}') from e
     finally:
-        # properly close off the connection (needs this to stop connection ballooning.)
-        # V1
+        # properly close off the connection
+        # V1, needs this to stop connection ballooning
         conn.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER)
-        # V2
+        # V2, maybe unnecessary
         try:
             conn.shutdown(socket.SHUT_RDWR)
         except OSError:
@@ -385,8 +397,7 @@ def setup_server():
         # set up readings #
         ###################
 
-        #readmsg = get_wx()
-        shared_data = {"msg": get_wx()}
+        data = {"msg": get_wx()}
         readmsg_lock = Lock()
 
         #####################
@@ -399,13 +410,10 @@ def setup_server():
             :return: None
             """
 
-            #nonlocal readmsg
-
             try:
                 new_msg = get_wx()
                 with readmsg_lock:
-                    #readmsg = new_msg
-                    shared_data["msg"] = new_msg
+                    data["msg"] = new_msg
             except Exception as ex:
                 raise Exception(f"Error reading sensor: {ex}") from ex
 
@@ -414,7 +422,7 @@ def setup_server():
         rt = RepeatedTimer(rt_time, update_readmsg)
 
         with ThreadPoolExecutor(max_workers=10) as executor:
-            main_loop(sock, executor, rt, shared_data, readmsg_lock)
+            main_loop(sock, executor, rt, data, readmsg_lock)
 
     except  Exception as e:
         raise Exception(f"Exception setting up the server: {e}") from e
@@ -463,8 +471,9 @@ def main_loop(s: socket, executor, repeat_timer: RepeatedTimer, msg: dict, lock)
                 # new thread to handle each client
                 executor.submit(client_handler, conn, lock, msg)
 
-                #
-                if throttle: time.sleep(0.01)
+                # mostly for debuggin'
+                if throttle:
+                    time.sleep(0.01)
 
             except OSError as os_err:
                 raise Exception(f"Socket error: {os_err}") from os_err

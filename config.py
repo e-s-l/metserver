@@ -67,10 +67,6 @@ bytesize=8
 parity='N'
 serial_timeout=2
 
-############
-# Database #
-############
-
 ##########
 # Logger #
 ##########

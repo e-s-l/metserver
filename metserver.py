@@ -208,16 +208,6 @@ def get_met() -> list:
     :return: The list of wx data.
     """
 
-    #
-    # so....
-    # this guy should 
-    # be called get_wx, and
-    # call poll_met, which in turn calls the below 
-    # but only returns a 3 element list (temp, pressure, humidity)
-    # and the poll_wind to get the last 2 elements (wind speed, wind direction)
-    # and then cat these lists together...
-    #
-
     if debug: logger.debug("in get_met")
 
     if s2e_mode:
@@ -300,7 +290,7 @@ def get_wind() -> list:
 def get_wx() -> list:
 
     try:
-        # cat list of 3 w/ list of 2
+        # cat list of 3 (temp, press, humid) w/ list of 2 (w_speed, w_direct)
         wx_data = get_met() + get_wind()
         logger.info(f"{wx_data}")
     except Exception as e:

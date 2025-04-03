@@ -417,6 +417,25 @@ def setup_server():
         raise Exception(f"Exception setting up the server: {e}") from e
 
 
+def server_shutdown(s: socket, rt: RepeatedTimer):
+    """
+    Helper function to cleanly kill the server program.
+
+    :param s: the socket to close.
+    :param rt: the timer to abort.
+    :return:  None
+    """
+
+    try:
+        if rt:
+            rt.stop()
+        if s:
+            s.close()
+        logger.info("Server shut down.")
+    except Exception as e:
+        raise Exception(f'Exception while shutting down server.') from e
+
+
 def main_loop(s: socket, executor, repeat_timer: RepeatedTimer, msg: list, lock):
     """
     the main loop run in the server which gives
@@ -455,25 +474,6 @@ def main_loop(s: socket, executor, repeat_timer: RepeatedTimer, msg: list, lock)
         logger.info("Shutting down server...")
     finally:
         server_shutdown(s, repeat_timer)
-
-
-def server_shutdown(s: socket, rt: RepeatedTimer):
-    """
-    Helper function to cleanly kill the server program.
-
-    :param s: the socket to close.
-    :param rt: the timer to abort.
-    :return:  None
-    """
-
-    try:
-        if rt:
-            rt.stop()
-        if s:
-            s.close()
-        logger.info("Server shut down.")
-    except Exception as e:
-        raise Exception(f'Exception while shutting down server.') from e
 
 ############################
 

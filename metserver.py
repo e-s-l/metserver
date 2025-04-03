@@ -293,12 +293,11 @@ def get_wx() -> list:
         # cat list of 3 (temp, press, humid) w/ list of 2 (w_speed, w_direct)
         wx_data = get_met() + get_wind()
 
-        logger.info(f"{wx_data}")
-        
     except Exception as e:
         logger.error(f"Error gathering the wx data: {e}")
         wx_data = met_err + wind_err
 
+    logger.info(f"{wx_data}")
     return wx_data
 
 ##########################
@@ -315,15 +314,10 @@ def client_handler(conn, readmsg_lock, readmsg: str):
 
     if debug: logger.debug(f"in client handler")
 
-    #logger.info(f"msg type: {type(readmsg)}")
-    #logger.info(f"readmsg = {readmsg}")
-
     try:
         with readmsg_lock:
             data = readmsg.encode('utf-8')
 
-        #logger.info(f"data type: {type(data)}")
-        #logger.info(f"readmsg = {data}")
         conn.sendall(data)
 
     except Exception as e:
@@ -331,12 +325,13 @@ def client_handler(conn, readmsg_lock, readmsg: str):
     finally:
         # properly close off the connection (needs this to stop connection ballooning.)
         # V1
-        #conn.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER)
+        conn.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER)
         # V2
-        #try:
-        #    conn.shutdown(socket.SHUT_RDWR)
-        #except OSError:
-        #    pass
+        try:
+            conn.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        # why not both!
 
         conn.close()
         logger.info("Connection closed.")

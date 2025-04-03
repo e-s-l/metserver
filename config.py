@@ -11,6 +11,9 @@ import sys
 # Control #
 ###########
 
+# refresh rate
+rt_time = 10
+
 # print extra info
 debug = False
 

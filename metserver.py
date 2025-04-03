@@ -316,7 +316,7 @@ def client_handler(conn, readmsg_lock, readmsg: str):
 
     try:
         with readmsg_lock:
-            data = readmsg.encode('utf-8')
+            data = ','.join(str(x) for x in msg).encode('utf-8')
 
         conn.sendall(data)
 
@@ -408,7 +408,7 @@ def setup_server():
 
         #####################
 
-        rt = RepeatedTimer(20, update_readmsg)
+        rt = RepeatedTimer(rt_time, update_readmsg)
 
         with ThreadPoolExecutor(max_workers=10) as executor:
             main_loop(sock, executor, rt, readmsg, readmsg_lock)
@@ -429,8 +429,6 @@ def main_loop(s: socket, executor, repeat_timer: RepeatedTimer, msg: list, lock)
     :param lock: a lock.
     :return:  None
     """
-
-    msg_str = ','.join(str(x) for x in msg)
 
     try:
         # in which we accept connections (from FS/the client) & return an immediate reading

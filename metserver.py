@@ -7,19 +7,12 @@ It samples the weather station (wx) at a low cadence & sends this value when a c
 ESL, 20.1.2025
 
 Notes:
-
 - The original getmet.c in the field system initialises the values thus:
-    temp=-51.0;
-    pres=-1.0;
-    humi=-1.0;
-    wsp=-1.0;
-    wdir=-1;
-We do the same.
-
+    temp=-51.0; pres=-1.0; humi=-1.0; wsp=-1.0; wdir=-1;
+    We do the same.
 - From the original, the wind units are:
     wdir - azimuth wind direction, degrees
     wsp  - wind speed, m/s
-
 """
 
 import ipaddress                                    # to validate the hosts.
@@ -314,7 +307,7 @@ def get_wx() -> list:
 
 ##########################
 
-def client_handler(conn, readmsg_lock, shared_data: dict):
+def client_handler(conn, readmsg_lock, data: dict):
     """
     When a client connects on the socket, return the wx data string.
 
@@ -328,9 +321,9 @@ def client_handler(conn, readmsg_lock, shared_data: dict):
 
     try:
         with readmsg_lock:
-            data = ','.join(str(x) for x in shared_data["msg"]).encode('utf-8')
+            msg = ','.join(str(x) for x in data["msg"]).encode('utf-8')
 
-        conn.sendall(data)
+        conn.sendall(msg)
 
     except Exception as e:
         raise Exception(f'Error in client_handler: {e}') from e

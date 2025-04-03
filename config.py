@@ -14,12 +14,29 @@ import sys
 debug = False
 
 # dummy read msg values in cases of error:
-rm_err = [-51.0,-1.0,-1.0,-1.0,-1.0]
+met_err = [-51.0,-1.0,-1.0]
+wind_err = [-1.0,-1]
 # NOTE: these are the same as the initialisation values
 # chosen to match the FS' getmet.c
 
 # add a slight time delay:
 throttle = False
+
+
+###############
+# Anenmometer #
+###############
+
+# hb sensor is 20 degrees misaligned
+hb_offset = 20
+cd_offest = 0
+misalignment = hb_offset
+
+# mutlicast properties
+ANY = "0.0.0.0"
+MCAST_ADDR = "239.192.0.4"
+MCAST_PORT = 60004
+# these are identical for hb & cd
 
 ##########
 # Server #

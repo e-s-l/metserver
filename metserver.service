@@ -3,10 +3,10 @@ Description=metserver
 After=syslog.target
 
 [Service]
-# For running outside of a python virtual environment
+# For running outside of a venv, python virtual environment:
 # ExecStart=/usr/bin/python3 /home/observer/metserver/metserver.py -t 0
 
-# For running within a venv, located at /home/pi/radiosonde_auto_rx/auto_rx/venv/
+# For running within a venv:
 ExecStart=/home/observer/metserver/venv/bin/python3 /home/observer/metserver/metserver.py -t 0
 Restart=always
 RestartSec=120

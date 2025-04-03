@@ -8,13 +8,12 @@ ESL, 20.1.2025
 
 ########
 # TODO
-# consider adding database uploader, may as well set up one on godzilla
+# - consider adding database uploader, may as well set up one on godzilla
 # mariadb with table for a site, just need to timestamp the uploads
 # oh no hang on, this should be a seperate script running on godzilla
 #
-# test
-# change for of read_msg to list, then convert to str when passing out
-# integrate the wind sensor into the last two values of the weather messsage
+# - test
+#
 # note: will have to update the requirements.txt & things accordingly
 
 
@@ -24,6 +23,7 @@ import time                                         # for the optional throttle.
 from concurrent.futures import ThreadPoolExecutor   # for multithreading the client connections.
 from threading import Timer, Lock                   # for the regular sampling of the wx.
 import serial                                       # for communicating with the wx.
+import numpy as np
 
 from config import *                                # program parameters
 
@@ -114,6 +114,7 @@ def setup_socket(h: str, p: int) -> socket:
     except Exception as e:
         raise Exception(f'Exception in setting up the socket.') from e
 
+##########################
 
 def poll_tcp() -> list:
     """
@@ -121,7 +122,7 @@ def poll_tcp() -> list:
 
     This is just a place-holder until we set up the device.
 
-    :return: string containing wx data, or rm_err if there is an error.
+    :return: string containing wx data, or read_err if there is an error.
     """
 
     try:
@@ -135,11 +136,11 @@ def poll_tcp() -> list:
             s2e_sock.sendall(b'*0100RH\r\n')
             rhmsg = s2e_sock.recv(256).decode('utf-8').strip()
 
-        return [tempmsg[5:].split()[0]},{presmsg[5:].split()[0]},{rhmsg[5:].split()[0]},-1,-1]
+        return [tempmsg[5:].split()[0],presmsg[5:].split()[0],rhmsg[5:].split()[0]]
 
     except Exception as e:
         logger.error(f"Error in poll_tcp: {e}")
-        return rm_err
+        return met_err
 
 
 def poll_serial() -> list:
@@ -182,30 +183,30 @@ def poll_serial() -> list:
             presmsg = read_command(b'*0100P3\r\n')
             rhmsg = read_command(b'*0100RH\r\n')
 
-        return [tempmsg[5:].split()[0]},{presmsg[5:].split()[0]},{rhmsg[5:].split()[0]},-1,-1]
+        return [tempmsg[5:].split()[0],presmsg[5:].split()[0],rhmsg[5:].split()[0]]
 
     except ValueError as ve:
         logger.error(f"Value error in poll_serial: {ve}")
-        return rm_err
+        return met_err
 
     except serial.SerialException as se:
         logger.error(f"Serial exception: {se}")
-        return rm_err
+        return met_err
 
     except TimeoutError as te:
         logger.error(f"Timeout error in poll_serial: {te}")
-        return rm_err
+        return met_err
 
     except Exception as e:
         logger.error(f"Unexpected error in poll_serial: {e}")
-        return rm_err
+        return met_err
 
 
-def getmet() -> list:
+def get_met() -> list:
     """
     Runner function to get the wx data.
 
-    :return: The string of wx data.
+    :return: The list of wx data.
     """
 
     #
@@ -218,25 +219,97 @@ def getmet() -> list:
     # and then cat these lists together...
     #
 
-    if debug: logger.debug("in getmet")
-
-    readmsg = [-51.0,-1.0,-1.0,-1.0,-1.0]  # dummy initialisation
-    # values chosen to match the FS' getmet.c
-
+    if debug: logger.debug("in get_met")
 
     if s2e_mode:
         # try the s2e socket...
-        readmsg = poll_tcp()
+        met_data = poll_tcp()
         # then if no result give the com port a go...
-        if readmsg == rm_err and serial_mode:
-            readmsg = poll_serial()
+        if met_data == met_err and serial_mode:
+            met_data = poll_serial()
     elif serial_mode:
-        readmsg = poll_serial()
+        met_data = poll_serial()
 
-    if debug: logger.debug(readmsg)
+    if debug: logger.debug(met_data)
 
-    return readmsg
+    return met_data
 
+##########################
+
+def anemometer_connect() -> socket:
+
+    # Create a UDP socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+
+    # Allow multiple sockets to use the same PORT number
+    sock.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1)
+
+    # Bind to the port that we know will receive multicast data
+    sock.bind((ANY,MCAST_PORT))
+
+    # Tell the kernel that we want to add ourselves to a multicast group
+    # The address for the multicast group is the third param
+    status = sock.setsockopt(socket.IPPROTO_IP,
+    socket.IP_ADD_MEMBERSHIP,
+    socket.inet_aton(MCAST_ADDR) + socket.inet_aton(ANY))
+    # setblocking(0) is equiv to settimeout(0.0) which means we poll the socket.
+    # But this will raise an error if recv() or send() can't immediately find or send data.
+    sock.setblocking(0)
+
+    return sock
+
+def anemometer_read(s: socket, offset: int) -> list:
+
+    attempts = 3
+    while attempts > 0:
+        try:
+            data, addr = s.recvfrom(1024)
+            wsp, wdir = np.asarray(np.array(data.decode('utf-8').split(','))[(4,2),], dtype='float')
+
+            wsp = np.round(wsp, 2)
+            wdir = np.round((wdir + offset), 2)
+
+            if debug:
+                logger.debug(f"{wsp} [m/s], dir = {wdir} [\u00b0]")
+
+            return [wsp, wdir]
+
+        except socket.error as se:
+            logger.warning(f"Socket error: {se}. I'll wait a second then retry. {attempts-1} attempts left.")
+            time.sleep(1)
+            attempts -= 1
+
+        except ValueError as ve:
+            logger.error(f"Error: {ve}")
+            time.sleep(1)
+            break
+
+    return wind_err
+
+
+def get_wind() -> list:
+    """
+    Connect to the NMEA multicasting anemometer interface,
+    and get a value for the wind.
+    Format: ([m/s],[direction])
+    """
+
+    return anemometer_read(anemometer_connect(), misalignment)
+
+##########################
+
+def get_wx() -> list:
+
+    try:
+        # cat list of 3 w/ list of 2
+        wx_data = get_met() + get_wind()
+    except Exception as e:
+        logger.error(f"Error gathering the wx data: {e}")
+        wx_data = met_err + wind_err
+
+    return wx_data
+
+##########################
 
 def client_handler(conn, readmsg_lock, readmsg: str):
     """
@@ -320,7 +393,7 @@ def setup_server():
         # set up readings #
         ###################
 
-        readmsg = getmet()
+        readmsg = get_wx()
         readmsg_lock = Lock()
 
         #####################
@@ -335,7 +408,7 @@ def setup_server():
 
             nonlocal readmsg
             try:
-                new_msg = getmet()
+                new_msg = get_wx()
                 with readmsg_lock:
                     readmsg = new_msg
             except Exception as ex:
@@ -346,17 +419,10 @@ def setup_server():
         rt = RepeatedTimer(20, update_readmsg)
 
         with ThreadPoolExecutor(max_workers=10) as executor:
-
-            #######################
-            # enter the main loop #
-            #######################
-
             main_loop(sock, executor, rt, readmsg, readmsg_lock)
 
     except  Exception as e:
-        raise Exception(f"Exception setting up the server") from e
-    finally:
-        server_shutdown(sock, rt)
+        raise Exception(f"Exception setting up the server: {e}") from e
 
 
 def main_loop(s: socket, executor, repeat_timer: RepeatedTimer, msg: list, lock):
@@ -372,7 +438,6 @@ def main_loop(s: socket, executor, repeat_timer: RepeatedTimer, msg: list, lock)
     :return:  None
     """
 
-    
     msg_str = ','.join(str(x) for x in msg)
 
     try:
@@ -410,8 +475,10 @@ def server_shutdown(s: socket, rt: RepeatedTimer):
     """
 
     try:
-        if rt: rt.stop()
-        if s: s.close()
+        if rt:
+            rt.stop()
+        if s:
+            s.close()
         logger.info("Server shut down.")
     except Exception as e:
         raise Exception(f'Exception while shutting down server.') from e

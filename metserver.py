@@ -101,7 +101,7 @@ def setup_socket(h: str, p: int) -> socket:
             s.bind((h, p))
             logger.info('Bind complete.')
         except Exception as e:
-            raise Exception(f'Bind failed.') from e
+            raise Exception(f'Bind failed: {e}') from e
 
         # Start listening on socket
         s.listen(10)
@@ -111,7 +111,7 @@ def setup_socket(h: str, p: int) -> socket:
         return s
 
     except Exception as e:
-        raise Exception(f'Exception in setting up the socket.') from e
+        raise Exception(f'Exception in setting up the socket: {e}') from e
 
 ##########################
 
@@ -302,7 +302,7 @@ def get_wx() -> list:
 
 ##########################
 
-def client_handler(conn, readmsg_lock, readmsg: str):
+def client_handler(conn, readmsg_lock, shared_data: dict):
     """
     When a client connects on the socket, return the wx data string.
 
@@ -316,7 +316,7 @@ def client_handler(conn, readmsg_lock, readmsg: str):
 
     try:
         with readmsg_lock:
-            data = ','.join(str(x) for x in msg).encode('utf-8')
+            data = ','.join(str(x) for x in shared_data["msg"]).encode('utf-8')
 
         conn.sendall(data)
 
@@ -385,7 +385,8 @@ def setup_server():
         # set up readings #
         ###################
 
-        readmsg = get_wx()
+        #readmsg = get_wx()
+        shared_data = {"msg": get_wx()}
         readmsg_lock = Lock()
 
         #####################
@@ -398,11 +399,13 @@ def setup_server():
             :return: None
             """
 
-            nonlocal readmsg
+            #nonlocal readmsg
+
             try:
                 new_msg = get_wx()
                 with readmsg_lock:
-                    readmsg = new_msg
+                    #readmsg = new_msg
+                    shared_data["msg"] = new_msg
             except Exception as ex:
                 raise Exception(f"Error reading sensor: {ex}") from ex
 
@@ -411,7 +414,7 @@ def setup_server():
         rt = RepeatedTimer(rt_time, update_readmsg)
 
         with ThreadPoolExecutor(max_workers=10) as executor:
-            main_loop(sock, executor, rt, readmsg, readmsg_lock)
+            main_loop(sock, executor, rt, shared_data, readmsg_lock)
 
     except  Exception as e:
         raise Exception(f"Exception setting up the server: {e}") from e
@@ -436,7 +439,7 @@ def server_shutdown(s: socket, rt: RepeatedTimer):
         raise Exception(f'Exception while shutting down server.') from e
 
 
-def main_loop(s: socket, executor, repeat_timer: RepeatedTimer, msg: list, lock):
+def main_loop(s: socket, executor, repeat_timer: RepeatedTimer, msg: dict, lock):
     """
     the main loop run in the server which gives
     the wx value (read_msg) to any new connections & closes the connection.

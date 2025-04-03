@@ -23,7 +23,6 @@ import time                                         # for the optional throttle.
 from concurrent.futures import ThreadPoolExecutor   # for multithreading the client connections.
 from threading import Timer, Lock                   # for the regular sampling of the wx.
 import serial                                       # for communicating with the wx.
-import numpy as np
 
 from config import *                                # program parameters
 
@@ -264,13 +263,13 @@ def anemometer_read(s: socket, offset: int) -> list:
     while attempts > 0:
         try:
             data, addr = s.recvfrom(1024)
-            wsp, wdir = np.asarray(np.array(data.decode('utf-8').split(','))[(4,2),], dtype='float')
 
-            wsp = np.round(wsp, 2)
-            wdir = np.round((wdir + offset), 2)
+            vals = data.decode("utf-8").split(",")
+            wsp = round(float(vals[4]), 2)
+            wdir = round(float(vals[2]) + offset, 2)
 
             if debug:
-                logger.debug(f"{wsp} [m/s], dir = {wdir} [\u00b0]")
+                logger.info(f"{wsp} [m/s], dir = {wdir} [\u00b0]")
 
             return [wsp, wdir]
 
@@ -323,10 +322,15 @@ def client_handler(conn, readmsg_lock, readmsg: str):
 
     if debug: logger.debug(f"in client handler")
 
+    logger.info(f"msg type: {type(readmsg)}")
+    logger.info(f"readmsg = {readmsg}")
+
     try:
         with readmsg_lock:
             data = readmsg.encode('utf-8')
 
+        logger.info(f"data type: {type(data)}")
+        logger.info(f"readmsg = {data}")
         conn.sendall(data)
 
     except Exception as e:
@@ -336,10 +340,10 @@ def client_handler(conn, readmsg_lock, readmsg: str):
         # V1
         #conn.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER)
         # V2
-        try:
-            conn.shutdown(socket.SHUT_RDWR)
-        except OSError:
-            pass
+        #try:
+        #    conn.shutdown(socket.SHUT_RDWR)
+        #except OSError:
+        #    pass
 
         conn.close()
         logger.info("Connection closed.")

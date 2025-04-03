@@ -292,7 +292,9 @@ def get_wx() -> list:
     try:
         # cat list of 3 (temp, press, humid) w/ list of 2 (w_speed, w_direct)
         wx_data = get_met() + get_wind()
+
         logger.info(f"{wx_data}")
+        
     except Exception as e:
         logger.error(f"Error gathering the wx data: {e}")
         wx_data = met_err + wind_err

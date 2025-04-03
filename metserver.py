@@ -458,7 +458,7 @@ def main_loop(s: socket, executor, repeat_timer: RepeatedTimer, msg: list, lock)
                 logger.info(f'Connected with {addr[0]} : {addr[1]}')
 
                 # new thread to handle each client
-                executor.submit(client_handler, conn, lock, msg_str)
+                executor.submit(client_handler, conn, lock, msg)
 
                 #
                 if throttle: time.sleep(0.01)

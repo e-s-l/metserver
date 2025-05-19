@@ -21,7 +21,6 @@ import time                                         # for the optional throttle.
 from concurrent.futures import ThreadPoolExecutor   # for multithreading the client connections.
 from threading import Timer, Lock                   # for the regular sampling of the wx.
 import serial                                       # for communicating with the wx.
-
 from config import *                                # program parameters
 
 ###########
@@ -75,7 +74,7 @@ def setup_socket(h: str, p: int) -> socket:
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        logger.info('Socket created')
+        if debug: logger.info('Socket created')
 
         # Bind socket to local host and port
         try:
@@ -133,9 +132,9 @@ def poll_serial() -> list:
     if debug: logger.debug("in poll_serial")
 
     try:
-        with serial.Serial(com_port, baud_rate, bytesize, parity) as ser:
+        with serial.Serial(port=comport, baudrate=baud, bytesize=bytesize, parity=parity) as ser:
 
-            ser.timeout = serial_timeout
+            ser.timeout = timeout
 
             ###
 
@@ -253,10 +252,9 @@ def anemometer_read(s: socket, offset: int) -> list:
             wsp = round(float(vals[4]), 2)
             wdir = round(float(vals[2]) + offset, 2)
 
-            if debug:
-                logger.info(f"{wsp} [m/s], dir = {wdir} [\u00b0]")
+            if debug: logger.info(f"{wsp} [m/s], dir = {wdir} [\u00b0]")
 
-            return [wsp, wdir]
+            return [str(wsp), str(wdir)]
 
         except socket.error as se:
             logger.warning(f"Socket error: {se}. I'll wait a second then retry. {attempts-1} attempts left.")
@@ -302,7 +300,7 @@ def get_wx() -> list:
         logger.error(f"Error gathering the wx data: {e}")
         wx_data = met_err + wind_err
 
-    logger.info(f"{wx_data}")
+    if debug: logger.info(f"{wx_data}")
     return wx_data
 
 ##########################
@@ -335,11 +333,15 @@ def client_handler(conn, readmsg_lock, data: dict):
         try:
             conn.shutdown(socket.SHUT_RDWR)
         except OSError:
+            if debug: logger.debug(f"OSERROR occured closing socket!")
+            pass
+        except Exception as e:
+            if debug: logger.debug(f"exception while closing socket: {e}")
             pass
         # why not both!
 
         conn.close()
-        logger.info("Connection closed.")
+        if debug: logger.info("Connection closed.")
 
 
 def check_config():
@@ -435,7 +437,7 @@ def server_shutdown(s: socket, rt: RepeatedTimer):
             rt.stop()
         if s:
             s.close()
-        logger.info("Server shut down.")
+        if debug: logger.info("Server shut down.")
     except Exception as e:
         raise Exception(f'Exception while shutting down server.') from e
 
@@ -459,7 +461,7 @@ def main_loop(s: socket, executor, repeat_timer: RepeatedTimer, msg: dict, lock)
             try:
                 # wait to accept a connection - blocking call
                 conn, addr = s.accept()
-                logger.info(f'Connected with {addr[0]} : {addr[1]}')
+                if debug: logger.info(f'Connected with {addr[0]} : {addr[1]}')
 
                 # new thread to handle each client
                 executor.submit(client_handler, conn, lock, msg)

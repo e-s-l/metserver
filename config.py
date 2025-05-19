@@ -61,8 +61,9 @@ s2e_p = 5000                # DUMMY # Port of the s2e
 # Com port #
 ############
 
-com_port = '/dev/ttyUSB0'
-baud_rate = 9600
+comport = '/dev/ttyUSB0'
+# better to use the /dev/serial/by-path/file 
+baud = 9600
 bytesize=8
 parity='N'
 serial_timeout=2
